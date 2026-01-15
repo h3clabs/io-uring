@@ -1,0 +1,68 @@
+use std::{
+    io::Result,
+    ptr::{null_mut, NonNull},
+};
+
+use rustix::{
+    fd::AsFd,
+    ffi::c_void,
+    mm::{mmap, munmap, MapFlags, ProtFlags},
+};
+
+/// Mmap pointer
+pub type Ptr = NonNull<c_void>;
+
+/// Mmap
+#[derive(Debug)]
+pub struct Mmap {
+    pub ptr: Ptr,
+    pub len: usize,
+}
+
+impl Drop for Mmap {
+    fn drop(&mut self) {
+        // TODO: catch error
+        unsafe {
+            let _ = munmap(self.ptr.as_ptr(), self.len);
+        };
+    }
+}
+
+impl Mmap {
+    const MAP_FLAG: MapFlags = MapFlags::SHARED.union(MapFlags::POPULATE);
+    const MAP_PROT: ProtFlags = ProtFlags::READ.union(ProtFlags::WRITE);
+
+    pub fn new<Fd>(fd: Fd, len: usize, offset: u64) -> Result<Self>
+    where
+        Fd: AsFd,
+    {
+        let ptr = unsafe {
+            let mem = mmap(null_mut(), len, Self::MAP_PROT, Self::MAP_FLAG, fd, offset)?;
+            Ptr::new_unchecked(mem)
+        };
+        Ok(Self { ptr, len })
+    }
+
+    pub fn mmap<Fd>(
+        ptr: *mut c_void,
+        len: usize,
+        prot: ProtFlags,
+        flags: MapFlags,
+        fd: Fd,
+        offset: u64,
+    ) -> Result<Self>
+    where
+        Fd: AsFd,
+    {
+        let ptr = unsafe {
+            let mem = mmap(ptr, len, prot, flags, fd, offset)?;
+            Ptr::new_unchecked(mem)
+        };
+        Ok(Self { ptr, len })
+    }
+
+    #[inline]
+    pub const unsafe fn offset(&self, offset: u32) -> Ptr {
+        self.ptr.byte_add(offset as usize)
+    }
+}

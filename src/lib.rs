@@ -1,3 +1,6 @@
+#![cfg_attr(feature = "unstable-toolchain", feature(core_intrinsics))]
+#![cfg_attr(feature = "unstable-toolchain", allow(internal_features))]
+
 //! The `io_uring` library for Rust.
 //!
 //! The crate only provides a summary of the parameters.
@@ -47,25 +50,29 @@
 mod util;
 pub mod cqueue;
 pub mod opcode;
+pub mod platform;
 pub mod register;
+pub mod shared;
 pub mod squeue;
 mod submit;
 mod sys;
 pub mod types;
-
-use std::marker::PhantomData;
-use std::mem::ManuallyDrop;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::{cmp, io, mem};
+pub mod uringio;
 
 #[cfg(feature = "io_safety")]
 use std::os::unix::io::{AsFd, BorrowedFd};
+use std::{
+    cmp, io,
+    marker::PhantomData,
+    mem,
+    mem::ManuallyDrop,
+    os::unix::io::{AsRawFd, FromRawFd, RawFd},
+};
 
 pub use cqueue::CompletionQueue;
 pub use register::Probe;
 pub use squeue::SubmissionQueue;
-pub use submit::EnterFlags;
-pub use submit::Submitter;
+pub use submit::{EnterFlags, Submitter};
 use util::{Mmap, OwnedFd};
 
 /// IoUring instance
@@ -186,11 +193,7 @@ impl<S: squeue::EntryMarker, C: cqueue::EntryMarker> IoUring<S, C> {
 
                 let sq = squeue::Inner::new(&scq_mmap, &sqe_mmap, p);
                 let cq = cqueue::Inner::new(&scq_mmap, p);
-                let mm = MemoryMap {
-                    sq_mmap: scq_mmap,
-                    cq_mmap: None,
-                    sqe_mmap,
-                };
+                let mm = MemoryMap { sq_mmap: scq_mmap, cq_mmap: None, sqe_mmap };
 
                 Ok((mm, sq, cq))
             } else {
@@ -199,11 +202,7 @@ impl<S: squeue::EntryMarker, C: cqueue::EntryMarker> IoUring<S, C> {
 
                 let sq = squeue::Inner::new(&sq_mmap, &sqe_mmap, p);
                 let cq = cqueue::Inner::new(&cq_mmap, p);
-                let mm = MemoryMap {
-                    cq_mmap: Some(cq_mmap),
-                    sq_mmap,
-                    sqe_mmap,
-                };
+                let mm = MemoryMap { cq_mmap: Some(cq_mmap), sq_mmap, sqe_mmap };
 
                 Ok((mm, sq, cq))
             }
@@ -211,26 +210,14 @@ impl<S: squeue::EntryMarker, C: cqueue::EntryMarker> IoUring<S, C> {
 
         let (mm, sq, cq) = unsafe { setup_queue(&fd, &p)? };
 
-        Ok(IoUring {
-            sq,
-            cq,
-            fd,
-            params: Parameters(p),
-            memory: ManuallyDrop::new(mm),
-        })
+        Ok(IoUring { sq, cq, fd, params: Parameters(p), memory: ManuallyDrop::new(mm) })
     }
 
     /// Get the submitter of this io_uring instance, which can be used to submit submission queue
     /// events to the kernel for execution and to register files or buffers with it.
     #[inline]
     pub fn submitter(&self) -> Submitter<'_> {
-        Submitter::new(
-            &self.fd,
-            &self.params,
-            self.sq.head,
-            self.sq.tail,
-            self.sq.flags,
-        )
+        Submitter::new(&self.fd, &self.params, self.sq.head, self.sq.tail, self.sq.flags)
     }
 
     /// Get the parameters that were used to construct this instance.
@@ -259,20 +246,9 @@ impl<S: squeue::EntryMarker, C: cqueue::EntryMarker> IoUring<S, C> {
     /// please note that you need to `drop` or `sync` the queue before and after submit,
     /// otherwise the queue will not be updated.
     #[inline]
-    pub fn split(
-        &mut self,
-    ) -> (
-        Submitter<'_>,
-        SubmissionQueue<'_, S>,
-        CompletionQueue<'_, C>,
-    ) {
-        let submit = Submitter::new(
-            &self.fd,
-            &self.params,
-            self.sq.head,
-            self.sq.tail,
-            self.sq.flags,
-        );
+    pub fn split(&mut self) -> (Submitter<'_>, SubmissionQueue<'_, S>, CompletionQueue<'_, C>) {
+        let submit =
+            Submitter::new(&self.fd, &self.params, self.sq.head, self.sq.tail, self.sq.flags);
         (submit, self.sq.borrow(), self.cq.borrow())
     }
 
@@ -672,10 +648,7 @@ impl std::fmt::Debug for Parameters {
             .field("is_feature_nodrop", &self.is_feature_nodrop())
             .field("is_feature_submit_stable", &self.is_feature_submit_stable())
             .field("is_feature_rw_cur_pos", &self.is_feature_rw_cur_pos())
-            .field(
-                "is_feature_cur_personality",
-                &self.is_feature_cur_personality(),
-            )
+            .field("is_feature_cur_personality", &self.is_feature_cur_personality())
             .field("is_feature_poll_32bits", &self.is_feature_poll_32bits())
             .field("sq_entries", &self.0.sq_entries)
             .field("cq_entries", &self.0.cq_entries)
