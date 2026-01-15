@@ -18,7 +18,7 @@ exclude = []
 members = [ "io-uring-test", "io-uring-bench" ]
 
 [features]
-default = ["bindgen", "overwrite"]
+default = ["bindgen", "overwrite", "unstable-toolchain"]
 overwrite = [ "bindgen" ]
 direct-syscall = [ "sc" ]
 io_safety = []
