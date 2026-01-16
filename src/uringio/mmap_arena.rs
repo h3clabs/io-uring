@@ -1,4 +1,4 @@
-use std::{cmp, io::Result, marker::PhantomData, os::fd::AsFd};
+use std::{cmp, marker::PhantomData, os::fd::AsFd};
 
 use crate::{
     platform::{
@@ -8,10 +8,8 @@ use crate::{
         },
         mmap::Mmap,
     },
-    uringio::{
-        completion::entry::CompletionEntry, setup_args::ParamsExt,
-        submission::entry::SubmissionEntry,
-    },
+    shared::error::Result,
+    uringio::{completion::entry::Cqe, setup_args::ParamsExt, submission::entry::Sqe},
 };
 
 /// MmapArena
@@ -26,8 +24,8 @@ pub struct MmapArena<'fd, S, C> {
 
 impl<'fd, S, C> MmapArena<'fd, S, C>
 where
-    S: SubmissionEntry,
-    C: CompletionEntry,
+    S: Sqe,
+    C: Cqe,
 {
     pub fn new<Fd>(fd: &'fd Fd, params: &IoUringParams) -> Result<Self>
     where

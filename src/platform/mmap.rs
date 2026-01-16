@@ -1,13 +1,12 @@
-use std::{
-    io::Result,
-    ptr::{null_mut, NonNull},
-};
+use std::ptr::{null_mut, NonNull};
 
 use rustix::{
     fd::AsFd,
     ffi::c_void,
     mm::{mmap, munmap, MapFlags, ProtFlags},
 };
+
+use crate::shared::error::Result;
 
 /// Mmap pointer
 pub type Ptr = NonNull<c_void>;

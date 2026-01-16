@@ -1,17 +1,18 @@
 pub mod fs;
 pub mod net;
+pub mod noop;
 pub mod opcode;
 
 use crate::{
     platform::iouring::IoUringOp,
-    uringio::submission::entry::{Sqe128, Sqe64},
+    uringio::submission::entry::{FixSqe, Sqe, Sqe128, Sqe64, Ty},
 };
 
 mod private {
     use super::*;
 
     /// Sealed Entry: Sqe64 and Sqe128
-    pub trait Sealed {}
+    pub trait Sealed: FixSqe {}
 
     impl Sealed for Sqe64 {}
     impl Sealed for Sqe128 {}
@@ -22,12 +23,19 @@ pub trait Op: Sized {
 
     const OP_CODE: IoUringOp;
 
-    // FIX: Associated constants lazy evaluation, so do check in test
+    // FIX: Associated constants lazy evaluation, do check in test
+    #[cfg(test)]
     fn check_size_align() {
         assert_eq!(size_of::<Self>(), size_of::<Self::Entry>());
         assert_eq!(align_of::<Self>(), align_of::<Self::Entry>());
     }
 }
+
+impl<T: Op> Sqe for T {
+    const TYPE: Ty = T::Entry::TYPE;
+}
+
+impl<T: Op> FixSqe for T {}
 
 #[cfg(feature = "unstable-toolchain")]
 mod _unsafe_transmute_ {

@@ -4,9 +4,9 @@ use crate::{
     platform::iouring::IoUringSetupFlags,
     shared::constant::DEFAULT_SQ_POLL_IDLE,
     uringio::{
-        completion::entry::CompletionEntry,
+        completion::entry::Cqe,
         setup_args::SetupArgs,
-        submission::{entry::SubmissionEntry, queue::SubmissionQueue},
+        submission::{entry::Sqe, queue::SubmissionQueue},
     },
 };
 
@@ -45,8 +45,8 @@ impl Mode for Iopoll {
 impl Iopoll {
     pub fn new_args<S, C>(entries: u32) -> SetupArgs<S, C, Self>
     where
-        S: SubmissionEntry,
-        C: CompletionEntry,
+        S: Sqe,
+        C: Cqe,
     {
         SetupArgs::new(entries)
             .setup_iopoll()
@@ -76,8 +76,8 @@ impl Mode for Sqpoll {
 impl Sqpoll {
     pub fn new_args<S, C>(entries: u32) -> SetupArgs<S, C, Self>
     where
-        S: SubmissionEntry,
-        C: CompletionEntry,
+        S: Sqe,
+        C: Cqe,
     {
         SetupArgs::new(entries)
             .setup_sqpoll(DEFAULT_SQ_POLL_IDLE)

@@ -1,19 +1,22 @@
 pub mod mode;
 
-use std::{io::Result, marker::PhantomData};
+use std::marker::PhantomData;
 
 use crate::{
     platform::iouring::{io_uring_setup, AsFd, BorrowedFd, IoUringParams, OwnedFd},
+    shared::error::Result,
     uringio::{
         completion::{
-            entry::{CompletionEntry, Cqe16, Cqe32, CqeMix},
+            collector::Collector,
+            entry::{Cqe, Cqe16, Cqe32, CqeMix},
             queue::CompletionQueue,
         },
         mmap_arena::MmapArena,
         setup_args::SetupArgs,
         submission::{
-            entry::{Sqe128, Sqe64, SqeMix, SubmissionEntry},
+            entry::{Sqe, Sqe128, Sqe64, SqeMix},
             queue::SubmissionQueue,
+            submitter::Submitter,
         },
         uring::mode::Mode,
     },
@@ -56,8 +59,8 @@ pub struct Uring<'fd, S, C, M> {
 
 impl<'fd, S, C, M> Uring<'fd, S, C, M>
 where
-    S: SubmissionEntry,
-    C: CompletionEntry,
+    S: Sqe,
+    C: Cqe,
     M: Mode,
 {
     pub fn new(fd: &'fd UringFd<S, C, M>) -> Result<Self> {
@@ -67,6 +70,14 @@ where
             let cq = CompletionQueue::new(arena.cq_mmap(), &fd.params);
             Ok(Uring { sq, cq, arena })
         }
+    }
+
+    pub fn submitter(&mut self) -> Submitter<'_, 'fd, S, M> {
+        self.sq.submitter()
+    }
+
+    pub fn collector(&mut self) -> Collector<'_, 'fd, C, M> {
+        self.cq.collector()
     }
 }
 

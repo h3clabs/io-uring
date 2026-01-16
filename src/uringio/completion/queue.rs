@@ -1,12 +1,16 @@
 use std::{
     marker::PhantomData,
+    ops::{Index, IndexMut},
     ptr::NonNull,
     sync::atomic::{AtomicU32, Ordering},
 };
 
 use crate::{
     platform::{iouring::IoUringParams, mmap::Mmap},
-    uringio::uring::mode::Mode,
+    uringio::{
+        completion::{collector::Collector, entry::Cqe},
+        uring::mode::Mode,
+    },
 };
 
 /// CompletionQueue
@@ -23,10 +27,7 @@ pub struct CompletionQueue<'fd, C, M> {
     _marker_: PhantomData<M>,
 }
 
-impl<'fd, C, M> CompletionQueue<'fd, C, M>
-where
-    M: Mode,
-{
+impl<'fd, C, M> CompletionQueue<'fd, C, M> {
     pub const unsafe fn new(cq_mmap: &Mmap, params: &IoUringParams) -> Self {
         let IoUringParams { cq_off, .. } = params;
 
@@ -42,7 +43,19 @@ where
     }
 
     #[inline]
-    pub fn head(&self) -> u32 {
+    pub const fn get_cqe(&self, idx: u32) -> NonNull<C> {
+        // SAFETY: index masked
+        unsafe { self.cqes.add((idx & self.mask) as usize) }
+    }
+}
+
+impl<'fd, C, M> CompletionQueue<'fd, C, M>
+where
+    C: Cqe,
+    M: Mode,
+{
+    #[inline]
+    pub const fn head(&self) -> u32 {
         // SAFETY: userspace set CompletionQueue khead
         unsafe { *self.khead.as_ptr() }
     }
@@ -59,7 +72,24 @@ where
     }
 
     #[inline]
-    pub const fn size(&self) -> usize {
-        self.size as usize
+    pub fn collector(&mut self) -> Collector<'_, 'fd, C, M> {
+        Collector { head: self.head(), tail: self.tail(), queue: self }
+    }
+}
+
+impl<'fd, C, M> Index<u32> for CompletionQueue<'fd, C, M> {
+    type Output = C;
+
+    #[inline]
+    fn index(&self, index: u32) -> &Self::Output {
+        // TODO: handle SQARRAY SubmissionIndex
+        unsafe { self.get_cqe(index).as_ref() }
+    }
+}
+
+impl<'fd, C, M> IndexMut<u32> for CompletionQueue<'fd, C, M> {
+    #[inline]
+    fn index_mut(&mut self, index: u32) -> &mut Self::Output {
+        unsafe { self.get_cqe(index).as_mut() }
     }
 }

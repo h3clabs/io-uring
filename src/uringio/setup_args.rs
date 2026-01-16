@@ -1,10 +1,11 @@
-use std::{io::Result, marker::PhantomData};
+use std::marker::PhantomData;
 
 use crate::{
     platform::iouring::{AsRawFd, IoUringParams, IoUringSetupFlags},
+    shared::error::Result,
     uringio::{
-        completion::entry::CompletionEntry,
-        submission::entry::SubmissionEntry,
+        completion::entry::Cqe,
+        submission::entry::Sqe,
         uring::{mode::Mode, UringFd},
     },
 };
@@ -19,8 +20,8 @@ pub struct SetupArgs<S, C, M> {
 
 impl<S, C, M> SetupArgs<S, C, M>
 where
-    S: SubmissionEntry,
-    C: CompletionEntry,
+    S: Sqe,
+    C: Cqe,
     M: Mode,
 {
     pub fn new(entries: u32) -> Self {
@@ -146,8 +147,8 @@ pub trait ParamsExt<S, C> {
 
 impl<S, C> ParamsExt<S, C> for IoUringParams
 where
-    S: SubmissionEntry,
-    C: CompletionEntry,
+    S: Sqe,
+    C: Cqe,
 {
     fn sq_size(&self) -> usize {
         self.sq_off.array as usize + <Self as ParamsExt<S, C>>::sq_indices_size(self)

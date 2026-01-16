@@ -15,7 +15,7 @@ pub enum Ty {
 
 const BASE_CQE_SIZE: usize = size_of::<IoUringCqe>();
 
-pub trait CompletionEntry {
+pub trait Cqe {
     const TYPE: Ty;
 
     const SETUP_FLAG: IoUringSetupFlags = match Self::TYPE {
@@ -30,28 +30,32 @@ pub trait CompletionEntry {
     };
 }
 
+pub trait FixCqe: Sized + Cqe {}
+
 /// Cqe16
 #[derive(Debug, Default)]
 #[repr(transparent)]
 pub struct Cqe16 {
-    cqe: IoUringCqe,
+    raw: IoUringCqe,
 }
 
-impl CompletionEntry for Cqe16 {
+impl Cqe for Cqe16 {
     const TYPE: Ty = Ty::Cqe16;
 }
+
+impl FixCqe for Cqe16 {}
 
 impl Deref for Cqe16 {
     type Target = IoUringCqe;
 
     fn deref(&self) -> &Self::Target {
-        &self.cqe
+        &self.raw
     }
 }
 
 impl DerefMut for Cqe16 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.cqe
+        &mut self.raw
     }
 }
 
@@ -59,17 +63,19 @@ impl DerefMut for Cqe16 {
 #[derive(Debug, Default)]
 #[repr(C)]
 pub struct Cqe32 {
-    cqe: IoUringCqe,
-    extra_data: [u64; 2],
+    raw: IoUringCqe,
+    ext_data: [u64; 2],
 }
 
-impl CompletionEntry for Cqe32 {
+impl Cqe for Cqe32 {
     const TYPE: Ty = Ty::Cqe32;
 }
 
+impl FixCqe for Cqe32 {}
+
 impl Cqe32 {
-    pub const fn extra_data(&self) -> &[u64; 2] {
-        &self.extra_data
+    pub const fn ext_data(&self) -> &[u64; 2] {
+        &self.ext_data
     }
 }
 
@@ -77,13 +83,13 @@ impl Deref for Cqe32 {
     type Target = IoUringCqe;
 
     fn deref(&self) -> &Self::Target {
-        &self.cqe
+        &self.raw
     }
 }
 
 impl DerefMut for Cqe32 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.cqe
+        &mut self.raw
     }
 }
 
@@ -91,22 +97,31 @@ impl DerefMut for Cqe32 {
 #[derive(Debug, Default)]
 #[repr(C)]
 pub struct CqeMix {
-    pub cqe: IoUringCqe,
-    extra_data: PhantomData<[u64; 2]>,
+    raw: IoUringCqe,
+    ext_data: PhantomData<[u64; 2]>,
 }
 
-impl CompletionEntry for CqeMix {
+impl Cqe for CqeMix {
     const TYPE: Ty = Ty::CqeMix;
 }
 
 impl CqeMix {
     #[inline]
-    pub const fn is_cqe32(&self) -> bool {
-        self.cqe.flags.contains(IoUringCqeFlags::CQE_32)
+    pub fn is_cqe32(&self) -> bool {
+        self.flags.contains(IoUringCqeFlags::CQE_32)
     }
 
-    pub const unsafe fn extra_data(&self) -> &[u64; 2] {
-        transmute(&self.extra_data)
+    pub const unsafe fn ext_data(&self) -> &[u64; 2] {
+        transmute(&self.ext_data)
+    }
+}
+
+impl<T> From<T> for CqeMix
+where
+    T: Into<Cqe16>,
+{
+    fn from(cqe: T) -> Self {
+        Self { raw: cqe.into().raw, ext_data: PhantomData }
     }
 }
 
@@ -114,13 +129,13 @@ impl Deref for CqeMix {
     type Target = IoUringCqe;
 
     fn deref(&self) -> &Self::Target {
-        &self.cqe
+        &self.raw
     }
 }
 
 impl DerefMut for CqeMix {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.cqe
+        &mut self.raw
     }
 }
 
@@ -136,9 +151,22 @@ mod tests {
     }
 
     #[test]
+    fn test_cqe_align() {
+        assert_eq!(align_of::<Cqe16>(), 8);
+        assert_eq!(align_of::<Cqe32>(), 8);
+        assert_eq!(align_of::<CqeMix>(), 8);
+    }
+
+    #[test]
     fn test_entry_size() {
         assert_eq!(size_of::<Cqe16>(), 16);
         assert_eq!(size_of::<Cqe32>(), 32);
         assert_eq!(size_of::<CqeMix>(), 16);
+    }
+
+    #[test]
+    fn test_cqe_mix_transmute() {
+        assert_eq!(size_of::<Cqe16>(), size_of::<CqeMix>());
+        assert_eq!(align_of::<Cqe16>(), align_of::<CqeMix>());
     }
 }

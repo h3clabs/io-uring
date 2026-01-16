@@ -15,35 +15,39 @@ use crate::{
 pub enum Ty {
     Sqe64,
     Sqe128,
-    SqeMixed,
+    SqeMix,
 }
 
 const BASE_SQE_SIZE: usize = size_of::<IoUringSqe>();
 
-pub trait SubmissionEntry {
+pub trait Sqe {
     const TYPE: Ty;
 
     const SETUP_FLAG: IoUringSetupFlags = match Self::TYPE {
         Ty::Sqe64 => IoUringSetupFlags::empty(),
         Ty::Sqe128 => IoUringSetupFlags::SQE128,
-        Ty::SqeMixed => IoUringSetupFlags::SQE_MIXED,
+        Ty::SqeMix => IoUringSetupFlags::SQE_MIXED,
     };
 
     const SETUP_SQE_SIZE: usize = match Self::TYPE {
-        Ty::Sqe64 | Ty::SqeMixed => BASE_SQE_SIZE,
+        Ty::Sqe64 | Ty::SqeMix => BASE_SQE_SIZE,
         Ty::Sqe128 => BASE_SQE_SIZE * 2,
     };
 }
 
+pub trait FixSqe: Sized + Sqe {}
+
 /// Sqe64
 #[repr(transparent)]
 pub struct Sqe64 {
-    sqe: IoUringSqe,
+    raw: IoUringSqe,
 }
 
-impl SubmissionEntry for Sqe64 {
+impl Sqe for Sqe64 {
     const TYPE: Ty = Ty::Sqe64;
 }
+
+impl FixSqe for Sqe64 {}
 
 impl Debug for Sqe64 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -54,7 +58,7 @@ impl Debug for Sqe64 {
 
 impl Sqe64 {
     pub const fn new(sqe: IoUringSqe) -> Self {
-        Self { sqe }
+        Self { raw: sqe }
     }
 }
 
@@ -62,26 +66,28 @@ impl Deref for Sqe64 {
     type Target = IoUringSqe;
 
     fn deref(&self) -> &Self::Target {
-        &self.sqe
+        &self.raw
     }
 }
 
 impl DerefMut for Sqe64 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.sqe
+        &mut self.raw
     }
 }
 
 /// Sqe128
 #[repr(C)]
 pub struct Sqe128 {
-    sqe: IoUringSqe,
-    extra_data: [u8; 64],
+    raw: IoUringSqe,
+    ext_data: [u8; 64],
 }
 
-impl SubmissionEntry for Sqe128 {
+impl Sqe for Sqe128 {
     const TYPE: Ty = Ty::Sqe128;
 }
+
+impl FixSqe for Sqe128 {}
 
 impl Debug for Sqe128 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -91,13 +97,13 @@ impl Debug for Sqe128 {
 }
 
 impl Sqe128 {
-    pub const fn new(sqe: IoUringSqe) -> Self {
-        Self { sqe, extra_data: [0; 64] }
+    pub const fn new(raw: IoUringSqe) -> Self {
+        Self { raw, ext_data: [0; 64] }
     }
 
     #[inline]
-    pub const fn uring_cmd(&mut self) -> &mut [u8; 80] {
-        unsafe { transmute(&mut self.sqe.addr3_or_cmd) }
+    pub fn uring_cmd(&mut self) -> &mut [u8; 80] {
+        unsafe { transmute(&mut self.addr3_or_cmd) }
     }
 }
 
@@ -105,25 +111,25 @@ impl Deref for Sqe128 {
     type Target = IoUringSqe;
 
     fn deref(&self) -> &Self::Target {
-        &self.sqe
+        &self.raw
     }
 }
 
 impl DerefMut for Sqe128 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.sqe
+        &mut self.raw
     }
 }
 
 /// SqeMixed
 #[repr(transparent)]
 pub struct SqeMix {
-    sqe: IoUringSqe,
+    raw: IoUringSqe,
     extra_data: PhantomData<[u8; 64]>,
 }
 
-impl SubmissionEntry for SqeMix {
-    const TYPE: Ty = Ty::SqeMixed;
+impl Sqe for SqeMix {
+    const TYPE: Ty = Ty::SqeMix;
 }
 
 impl Debug for SqeMix {
@@ -136,12 +142,21 @@ impl Debug for SqeMix {
 impl SqeMix {
     #[inline]
     pub fn is_sqe128(&self) -> bool {
-        self.sqe.opcode.is_sqe128()
+        self.opcode.is_sqe128()
     }
 
     #[inline]
-    pub const unsafe fn uring_cmd(&mut self) -> &mut [u8; 80] {
-        transmute(&mut self.sqe.addr3_or_cmd.cmd)
+    pub unsafe fn uring_cmd(&mut self) -> &mut [u8; 80] {
+        transmute(&mut self.addr3_or_cmd.cmd)
+    }
+}
+
+impl<T> From<T> for SqeMix
+where
+    T: Into<Sqe64>,
+{
+    fn from(sqe: T) -> Self {
+        Self { raw: sqe.into().raw, extra_data: PhantomData }
     }
 }
 
@@ -149,13 +164,13 @@ impl Deref for SqeMix {
     type Target = IoUringSqe;
 
     fn deref(&self) -> &Self::Target {
-        &self.sqe
+        &self.raw
     }
 }
 
 impl DerefMut for SqeMix {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.sqe
+        &mut self.raw
     }
 }
 
@@ -171,9 +186,22 @@ mod tests {
     }
 
     #[test]
+    fn test_sqe_align() {
+        assert_eq!(align_of::<Sqe64>(), 8);
+        assert_eq!(align_of::<Sqe128>(), 8);
+        assert_eq!(align_of::<SqeMix>(), 8);
+    }
+
+    #[test]
     fn test_entry_size() {
         assert_eq!(size_of::<Sqe64>(), 64);
         assert_eq!(size_of::<Sqe128>(), 128);
         assert_eq!(size_of::<SqeMix>(), 64);
+    }
+
+    #[test]
+    fn test_sqe_mix_transmute() {
+        assert_eq!(size_of::<Sqe64>(), size_of::<SqeMix>());
+        assert_eq!(align_of::<Sqe64>(), align_of::<SqeMix>());
     }
 }
