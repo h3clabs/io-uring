@@ -7,8 +7,6 @@
         "ioprio",
         "ioring",
         "iouring",
-        "khead",
-        "ktail",
         "mmap",
         "munmap",
         "repr",
