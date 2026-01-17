@@ -6,23 +6,26 @@ use std::{
 };
 
 use crate::{
-    platform::{iouring::IoUringParams, mmap::Mmap},
+    platform::{
+        iouring::{IoUringCqFlags, IoUringParams},
+        mmap::Mmap,
+    },
     uringio::{
         completion::{collector::Collector, entry::Cqe},
-        uring::mode::Mode,
+        ring::mode::Mode,
     },
 };
 
 /// CompletionQueue
 #[derive(Debug)]
 pub struct CompletionQueue<'fd, C, M> {
-    pub khead: &'fd AtomicU32,
-    pub ktail: &'fd AtomicU32,
+    pub cqes: NonNull<C>,
+    pub k_head: &'fd AtomicU32,
+    pub k_tail: &'fd AtomicU32,
     pub mask: u32,
     pub size: u32,
-    pub overflow: &'fd AtomicU32,
-    pub cqes: NonNull<C>,
-    pub flags: &'fd AtomicU32,
+    pub k_overflow: &'fd AtomicU32,
+    pub k_flags: &'fd AtomicU32,
 
     _marker_: PhantomData<M>,
 }
@@ -31,15 +34,24 @@ impl<'fd, C, M> CompletionQueue<'fd, C, M> {
     pub const unsafe fn new(cq_mmap: &Mmap, params: &IoUringParams) -> Self {
         let IoUringParams { cq_off, .. } = params;
 
-        let khead = cq_mmap.offset(cq_off.head).cast().as_ref();
-        let ktail = cq_mmap.offset(cq_off.tail).cast().as_ref();
+        let cqes = cq_mmap.offset(cq_off.cqes).cast();
+        let k_head = cq_mmap.offset(cq_off.head).cast().as_ref();
+        let k_tail = cq_mmap.offset(cq_off.tail).cast().as_ref();
         let mask = cq_mmap.offset(cq_off.ring_mask).cast().read();
         let size = cq_mmap.offset(cq_off.ring_entries).cast().read();
-        let overflow = cq_mmap.offset(cq_off.overflow).cast().as_ref();
-        let cqes = cq_mmap.offset(cq_off.cqes).cast();
-        let flags = cq_mmap.offset(cq_off.flags).cast().as_ref();
+        let k_overflow = cq_mmap.offset(cq_off.overflow).cast().as_ref();
+        let k_flags = cq_mmap.offset(cq_off.flags).cast().as_ref();
 
-        Self { khead, ktail, mask, size, overflow, cqes, flags, _marker_: PhantomData }
+        Self { cqes, k_head, k_tail, mask, size, k_overflow, k_flags, _marker_: PhantomData }
+    }
+
+    pub fn overflow(&self) -> u32 {
+        self.k_overflow.load(Ordering::Acquire)
+    }
+
+    pub fn flags(&self) -> IoUringCqFlags {
+        let bits = self.k_flags.load(Ordering::Acquire);
+        IoUringCqFlags::from_bits_retain(bits)
     }
 
     #[inline]
@@ -57,18 +69,18 @@ where
     #[inline]
     pub const fn head(&self) -> u32 {
         // SAFETY: userspace set CompletionQueue khead
-        unsafe { *self.khead.as_ptr() }
+        unsafe { *self.k_head.as_ptr() }
     }
 
     #[inline]
     pub fn tail(&self) -> u32 {
         // TODO: Relaxed or Read ptr?
-        self.ktail.load(Ordering::Acquire)
+        self.k_tail.load(Ordering::Acquire)
     }
 
     #[inline]
     pub fn set_head(&mut self, head: u32) {
-        self.khead.store(head, Ordering::Release);
+        self.k_head.store(head, Ordering::Release);
     }
 
     #[inline]

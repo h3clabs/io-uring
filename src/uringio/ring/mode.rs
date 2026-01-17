@@ -38,7 +38,7 @@ impl Mode for Iopoll {
     #[inline]
     fn set_sq_ktail<S>(sq: &mut SubmissionQueue<'_, S, Self>, tail: u32) {
         // SAFETY: No concurrent set ktail in IOPOLL mode
-        unsafe { *sq.ktail.as_ptr() = tail }
+        unsafe { *sq.k_tail.as_ptr() = tail }
     }
 }
 
@@ -69,7 +69,7 @@ impl Mode for Sqpoll {
 
     #[inline]
     fn set_sq_ktail<S>(sq: &mut SubmissionQueue<'_, S, Self>, tail: u32) {
-        sq.ktail.store(tail, Ordering::Release)
+        sq.k_tail.store(tail, Ordering::Release)
     }
 }
 

@@ -30,7 +30,7 @@ pub trait Cqe {
     };
 }
 
-pub trait FixCqe: Sized + Cqe {}
+pub trait FixCqe: Sized {}
 
 /// Cqe16
 #[derive(Debug, Default)]

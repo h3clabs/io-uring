@@ -35,7 +35,7 @@ pub trait Sqe {
     };
 }
 
-pub trait FixSqe: Sized + Sqe {}
+pub trait FixSqe: Sized {}
 
 /// Sqe64
 #[repr(transparent)]

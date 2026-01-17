@@ -1,18 +1,19 @@
+pub mod fd;
 pub mod fs;
 pub mod net;
-pub mod noop;
+pub mod nop;
 pub mod opcode;
 
 use crate::{
     platform::iouring::IoUringOp,
-    uringio::submission::entry::{FixSqe, Sqe, Sqe128, Sqe64, Ty},
+    uringio::submission::entry::{FixSqe, Sqe, Sqe128, Sqe64},
 };
 
 mod private {
     use super::*;
 
     /// Sealed Entry: Sqe64 and Sqe128
-    pub trait Sealed: FixSqe {}
+    pub trait Sealed: Sqe + FixSqe {}
 
     impl Sealed for Sqe64 {}
     impl Sealed for Sqe128 {}
@@ -31,11 +32,7 @@ pub trait Op: Sized {
     }
 }
 
-impl<T: Op> Sqe for T {
-    const TYPE: Ty = T::Entry::TYPE;
-}
-
-impl<T: Op> FixSqe for T {}
+impl<T> FixSqe for T where T: Op {}
 
 #[cfg(feature = "unstable-toolchain")]
 mod _unsafe_transmute_ {

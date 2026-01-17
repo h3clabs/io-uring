@@ -14,8 +14,8 @@ pub type Ptr = NonNull<c_void>;
 /// Mmap
 #[derive(Debug)]
 pub struct Mmap {
-    pub ptr: Ptr,
-    pub len: usize,
+    ptr: Ptr,
+    len: usize,
 }
 
 impl Drop for Mmap {
@@ -58,6 +58,16 @@ impl Mmap {
             Ptr::new_unchecked(mem)
         };
         Ok(Self { ptr, len })
+    }
+
+    #[inline]
+    pub const fn ptr(&self) -> Ptr {
+        self.ptr
+    }
+
+    #[inline]
+    pub const fn len(&self) -> usize {
+        self.len
     }
 
     #[inline]

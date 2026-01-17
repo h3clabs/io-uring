@@ -1,9 +1,11 @@
 use std::os::fd::AsRawFd;
 
-use crate::platform::iouring::{AsFd, IoUringSqeFlags, RawFd};
+use crate::platform::iouring::{AsFd, IoUringSqeFlags, NopFlags, RawFd};
 
 pub trait OpFd {
-    const FD_FLAG: IoUringSqeFlags;
+    const SQE_FLAG: IoUringSqeFlags;
+
+    const NOP_FLAG: u32;
 
     fn raw_fd(&self) -> RawFd;
 }
@@ -25,7 +27,8 @@ impl From<usize> for FixFd {
 }
 
 impl OpFd for FixFd {
-    const FD_FLAG: IoUringSqeFlags = IoUringSqeFlags::FIXED_FILE;
+    const NOP_FLAG: u32 = NopFlags::FILE | NopFlags::FIXED_FILE;
+    const SQE_FLAG: IoUringSqeFlags = IoUringSqeFlags::FIXED_FILE;
 
     #[inline]
     fn raw_fd(&self) -> RawFd {
@@ -37,7 +40,8 @@ impl<T> OpFd for T
 where
     T: AsFd,
 {
-    const FD_FLAG: IoUringSqeFlags = IoUringSqeFlags::empty();
+    const NOP_FLAG: u32 = NopFlags::FILE;
+    const SQE_FLAG: IoUringSqeFlags = IoUringSqeFlags::empty();
 
     #[inline]
     fn raw_fd(&self) -> RawFd {

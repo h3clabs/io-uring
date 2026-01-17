@@ -1,1 +1,3 @@
-pub mod read;
+mod read;
+
+pub use read::Read;

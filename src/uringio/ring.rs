@@ -1,9 +1,7 @@
+pub mod fd;
 pub mod mode;
 
-use std::marker::PhantomData;
-
 use crate::{
-    platform::iouring::{io_uring_setup, AsFd, BorrowedFd, IoUringParams, OwnedFd},
     shared::error::Result,
     uringio::{
         completion::{
@@ -12,49 +10,21 @@ use crate::{
             queue::CompletionQueue,
         },
         mmap_arena::MmapArena,
-        setup_args::SetupArgs,
+        ring::{fd::RingFd, mode::Mode},
         submission::{
             entry::{Sqe, Sqe128, Sqe64, SqeMix},
             queue::SubmissionQueue,
             submitter::Submitter,
         },
-        uring::mode::Mode,
     },
 };
-
-/// UringFd
-#[derive(Debug)]
-pub struct UringFd<S, C, M> {
-    pub fd: OwnedFd,
-    pub params: IoUringParams,
-
-    _marker_: PhantomData<(S, C, M)>,
-}
-
-impl<S, C, M> UringFd<S, C, M> {
-    pub const fn new(fd: OwnedFd, params: IoUringParams) -> Self {
-        Self { fd, params, _marker_: PhantomData }
-    }
-
-    pub fn setup(args: SetupArgs<S, C, M>) -> Result<Self> {
-        let SetupArgs { mut params, .. } = args;
-        let fd = unsafe { io_uring_setup(params.sq_entries, &mut params)? };
-        Ok(Self::new(fd, params))
-    }
-}
-
-impl<S, C, M> AsFd for UringFd<S, C, M> {
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.fd.as_fd()
-    }
-}
 
 /// Uring
 #[derive(Debug)]
 pub struct Uring<'fd, S, C, M> {
     pub sq: SubmissionQueue<'fd, S, M>,
     pub cq: CompletionQueue<'fd, C, M>,
-    pub arena: MmapArena<'fd, S, C>,
+    pub arena: MmapArena<'fd, S, C>, // TODO: FIX unsafe to drop arena before sq and cq
 }
 
 impl<'fd, S, C, M> Uring<'fd, S, C, M>
@@ -63,7 +33,7 @@ where
     C: Cqe,
     M: Mode,
 {
-    pub fn new(fd: &'fd UringFd<S, C, M>) -> Result<Self> {
+    pub fn new(fd: &'fd RingFd<S, C, M>) -> Result<Self> {
         unsafe {
             let arena = MmapArena::new(fd, &fd.params)?;
             let sq = SubmissionQueue::new(&arena.sq_mmap, &arena.sqes_mmap, &fd.params);
@@ -78,6 +48,10 @@ where
 
     pub fn collector(&mut self) -> Collector<'_, 'fd, C, M> {
         self.cq.collector()
+    }
+
+    pub fn borrow(&mut self) -> (Submitter<'_, 'fd, S, M>, Collector<'_, 'fd, C, M>) {
+        (self.sq.submitter(), self.cq.collector())
     }
 }
 

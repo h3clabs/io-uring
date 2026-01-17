@@ -5,8 +5,8 @@ use crate::{
     shared::error::Result,
     uringio::{
         completion::entry::Cqe,
+        ring::{fd::RingFd, mode::Mode},
         submission::entry::Sqe,
-        uring::{mode::Mode, UringFd},
     },
 };
 
@@ -128,8 +128,8 @@ where
         self
     }
 
-    pub fn setup(self) -> Result<UringFd<S, C, M>> {
-        UringFd::setup(self)
+    pub fn setup(self) -> Result<RingFd<S, C, M>> {
+        RingFd::setup(self.params)
     }
 }
 

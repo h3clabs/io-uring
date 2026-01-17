@@ -5,7 +5,10 @@ use crate::{
         io::ReadWriteFlags,
         iouring::{IoUringOp, IoUringPiAttr, IoUringPtr, IoUringSqeFlags, IoUringUserData, RawFd},
     },
-    uringio::{fd::OpFd, operator::Op, submission::entry::Sqe64},
+    uringio::{
+        operator::{fd::OpFd, Op},
+        submission::entry::Sqe64,
+    },
 };
 
 #[derive(Debug)]
@@ -41,7 +44,7 @@ impl<'a> Read<'a> {
     {
         Self {
             opcode: Self::OP_CODE,
-            flags: Fd::FD_FLAG,
+            flags: Fd::SQE_FLAG,
             ioprio: 0,
             fd: fd.raw_fd(),
             offset: 0,
