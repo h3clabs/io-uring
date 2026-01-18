@@ -11,8 +11,8 @@ use crate::{
         mmap::Mmap,
     },
     uringio::{
-        ring::mode::Mode,
         submission::{entry::Sqe, index::SubmissionIndex, submitter::Submitter},
+        uring::mode::Mode,
     },
 };
 
@@ -46,13 +46,17 @@ impl<'fd, S, M> SubmissionQueue<'fd, S, M> {
         Self { sqes, k_head, k_tail, mask, size, k_flags, k_dropped, _marker_: PhantomData }
     }
 
-    pub fn flags(&self) -> IoUringSqFlags {
-        let bits = self.k_flags.load(Ordering::Acquire);
+    pub fn flags(&self, order: Ordering) -> IoUringSqFlags {
+        let bits = self.k_flags.load(order);
         IoUringSqFlags::from_bits_retain(bits)
     }
 
     pub fn dropped(&self) -> u32 {
         self.k_dropped.load(Ordering::Acquire)
+    }
+
+    pub fn cq_overflow(&self) -> bool {
+        self.flags(Ordering::Relaxed).contains(IoUringSqFlags::CQ_OVERFLOW)
     }
 
     #[inline]
@@ -69,7 +73,7 @@ where
 {
     #[inline]
     pub fn head(&self) -> u32 {
-        self.k_head.load(Ordering::Acquire)
+        M::get_sq_head(self)
     }
 
     #[inline]
@@ -80,10 +84,9 @@ where
 
     #[inline]
     pub fn set_tail(&mut self, tail: u32) {
-        M::set_sq_ktail(self, tail);
+        M::set_sq_tail(self, tail);
     }
 
-    #[inline]
     pub fn submitter(&mut self) -> Submitter<'_, 'fd, S, M> {
         Submitter { head: self.head(), tail: self.tail(), queue: self }
     }

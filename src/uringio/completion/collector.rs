@@ -1,6 +1,6 @@
 use crate::uringio::{
     completion::{entry::Cqe, queue::CompletionQueue},
-    ring::mode::Mode,
+    uring::mode::Mode,
 };
 
 #[derive(Debug)]

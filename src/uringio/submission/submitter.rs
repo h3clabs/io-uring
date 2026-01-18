@@ -5,11 +5,11 @@ use crate::{
     },
     uringio::{
         operator::{nop::Nop128, Op},
-        ring::mode::Mode,
         submission::{
             entry::{FixSqe, Sqe, Sqe128, Sqe64, SqeMix},
             queue::SubmissionQueue,
         },
+        uring::mode::Mode,
     },
 };
 
@@ -65,7 +65,7 @@ where
         self.size() == self.queue.size
     }
 
-    pub fn submit() {}
+    pub fn submit(n: usize) {}
 }
 
 pub trait Submit<T> {

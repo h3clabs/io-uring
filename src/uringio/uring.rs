@@ -1,7 +1,8 @@
-pub mod fd;
+pub mod desc;
 pub mod mode;
 
 use crate::{
+    platform::iouring::IoUringParams,
     shared::error::Result,
     uringio::{
         completion::{
@@ -10,12 +11,12 @@ use crate::{
             queue::CompletionQueue,
         },
         mmap_arena::MmapArena,
-        ring::{fd::RingFd, mode::Mode},
         submission::{
             entry::{Sqe, Sqe128, Sqe64, SqeMix},
             queue::SubmissionQueue,
             submitter::Submitter,
         },
+        uring::mode::Mode,
     },
 };
 
@@ -24,7 +25,6 @@ use crate::{
 pub struct Uring<'fd, S, C, M> {
     pub sq: SubmissionQueue<'fd, S, M>,
     pub cq: CompletionQueue<'fd, C, M>,
-    pub arena: MmapArena<'fd, S, C>, // TODO: FIX unsafe to drop arena before sq and cq
 }
 
 impl<'fd, S, C, M> Uring<'fd, S, C, M>
@@ -33,12 +33,11 @@ where
     C: Cqe,
     M: Mode,
 {
-    pub fn new(fd: &'fd RingFd<S, C, M>) -> Result<Self> {
+    pub fn new(arena: &'fd MmapArena<S, C, M>, params: &IoUringParams) -> Result<Self> {
         unsafe {
-            let arena = MmapArena::new(fd, &fd.params)?;
-            let sq = SubmissionQueue::new(&arena.sq_mmap, &arena.sqes_mmap, &fd.params);
-            let cq = CompletionQueue::new(arena.cq_mmap(), &fd.params);
-            Ok(Uring { sq, cq, arena })
+            let sq = SubmissionQueue::new(&arena.sq_mmap, &arena.sqes_mmap, params);
+            let cq = CompletionQueue::new(arena.cq_mmap(), params);
+            Ok(Uring { sq, cq })
         }
     }
 

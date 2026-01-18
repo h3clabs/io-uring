@@ -6,7 +6,6 @@ use crate::{
     },
 };
 
-/// Nop
 #[derive(Debug)]
 #[repr(C)]
 pub struct Nop {

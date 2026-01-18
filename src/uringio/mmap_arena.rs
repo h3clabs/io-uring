@@ -3,7 +3,7 @@ use std::{cmp, marker::PhantomData, os::fd::AsFd};
 use crate::{
     platform::{
         iouring::{
-            IoUringFeatureFlags, IoUringParams, OwnedFd, IOURING_OFF_CQ_RING, IOURING_OFF_SQES,
+            IoUringFeatureFlags, IoUringParams, IOURING_OFF_CQ_RING, IOURING_OFF_SQES,
             IOURING_OFF_SQ_RING,
         },
         mmap::Mmap,
@@ -14,20 +14,20 @@ use crate::{
 
 /// MmapArena
 #[derive(Debug)]
-pub struct MmapArena<'fd, S, C> {
+pub struct MmapArena<S, C, M> {
     pub sq_mmap: Mmap,
     pub sqes_mmap: Mmap,
     cq_mmap: Option<Mmap>,
 
-    _marker_: PhantomData<(&'fd OwnedFd, S, C)>,
+    _marker_: PhantomData<(S, C, M)>,
 }
 
-impl<'fd, S, C> MmapArena<'fd, S, C>
+impl<S, C, M> MmapArena<S, C, M>
 where
     S: Sqe,
     C: Cqe,
 {
-    pub fn new<Fd>(fd: &'fd Fd, params: &IoUringParams) -> Result<Self>
+    pub fn new<Fd>(fd: &Fd, params: &IoUringParams) -> Result<Self>
     where
         Fd: AsFd,
     {

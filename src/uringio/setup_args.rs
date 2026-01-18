@@ -1,12 +1,13 @@
 use std::marker::PhantomData;
 
 use crate::{
-    platform::iouring::{AsRawFd, IoUringParams, IoUringSetupFlags},
+    platform::iouring::{io_uring_setup, AsRawFd, IoUringParams, IoUringSetupFlags},
     shared::error::Result,
     uringio::{
         completion::entry::Cqe,
-        ring::{fd::RingFd, mode::Mode},
+        mmap_arena::MmapArena,
         submission::entry::Sqe,
+        uring::{desc::RingDesc, mode::Mode},
     },
 };
 
@@ -33,40 +34,40 @@ where
         SetupArgs { params, _marker_: PhantomData }
     }
 
-    pub fn setup_sqsize(mut self, entries: u32) -> Self {
+    pub fn sqsize(mut self, entries: u32) -> Self {
         self.params.sq_entries = entries;
         self
     }
 
-    pub fn setup_iopoll(mut self) -> Self {
+    pub fn iopoll(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::IOPOLL;
         self
     }
 
-    pub fn setup_sqpoll(mut self, idle: u32) -> Self {
+    pub fn sqpoll(mut self, idle: u32) -> Self {
         self.params.flags |= IoUringSetupFlags::SQPOLL;
         self.params.sq_thread_idle = idle;
         self
     }
 
-    pub fn setup_sqpoll_cpu(mut self, cpu: u32) -> Self {
+    pub fn sqpoll_cpu(mut self, cpu: u32) -> Self {
         self.params.flags |= IoUringSetupFlags::SQ_AFF;
         self.params.sq_thread_cpu = cpu;
         self
     }
 
-    pub fn setup_cqsize(mut self, entries: u32) -> Self {
+    pub fn cqsize(mut self, entries: u32) -> Self {
         self.params.flags |= IoUringSetupFlags::CQSIZE;
         self.params.cq_entries = entries;
         self
     }
 
-    pub fn setup_clamp(mut self) -> Self {
+    pub fn clamp(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::CLAMP;
         self
     }
 
-    pub fn setup_attach_wq<F>(mut self, fd: F) -> Self
+    pub fn attach_wq<F>(mut self, fd: F) -> Self
     where
         F: AsRawFd,
     {
@@ -75,61 +76,67 @@ where
         self
     }
 
-    pub fn setup_r_disabled(mut self) -> Self {
+    pub fn r_disabled(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::R_DISABLED;
         self
     }
 
-    pub fn setup_submit_all(mut self) -> Self {
+    pub fn submit_all(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::SUBMIT_ALL;
         self
     }
 
-    pub fn setup_coop_taskrun(mut self) -> Self {
+    // Must use with SQPOLL
+    pub fn coop_taskrun(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::COOP_TASKRUN;
         self
     }
 
-    pub fn setup_taskrun_flag(mut self) -> Self {
+    // Must use with SQPOLL
+    pub fn taskrun_flag(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::TASKRUN_FLAG;
         self
     }
 
-    pub fn setup_single_issuer(mut self) -> Self {
+    pub fn single_issuer(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::SINGLE_ISSUER;
         self
     }
 
-    /// Must use with IORING_SETUP_SINGLE_ISSUER
-    pub fn setup_defer_taskrun(mut self) -> Self {
+    // Must use with IOPOLL | SINGLE_ISSUER
+    pub fn defer_taskrun(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::DEFER_TASKRUN;
         self
     }
 
-    pub fn setup_no_mmap(mut self) -> Self {
+    pub fn no_mmap(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::NO_MMAP;
         // TODO: setup hugepage mmap
         self
     }
 
-    /// Must use with IORING_SETUP_NO_MMAP
-    pub fn setup_registered_fd_only(mut self) -> Self {
+    // Must use with NO_MMAP
+    pub fn registered_fd_only(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::REGISTERED_FD_ONLY;
         self
     }
 
-    pub fn setup_no_sqarray(mut self) -> Self {
+    pub fn no_sqarray(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::NO_SQARRAY;
         self
     }
 
-    pub fn setup_hybrid_iopoll(mut self) -> Self {
+    // Must use with IOPOLL
+    pub fn hybrid_iopoll(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::HYBRID_IOPOLL;
         self
     }
 
-    pub fn setup(self) -> Result<RingFd<S, C, M>> {
-        RingFd::setup(self.params)
+    pub fn setup(self) -> Result<(RingDesc<S, C, M>, IoUringParams)> {
+        let SetupArgs { mut params, .. } = self;
+        let fd = unsafe { io_uring_setup(params.sq_entries, &mut params)? };
+        let arena = MmapArena::new(&fd, &params)?;
+        Ok((RingDesc::new(fd, arena), params))
     }
 }
 

@@ -1,7 +1,7 @@
 use std::{
     io::{Error, ErrorKind, Result},
     ops::{Deref, DerefMut},
-    ptr::NonNull,
+    slice::from_raw_parts_mut,
 };
 
 use crate::platform::{
@@ -21,7 +21,7 @@ const fn submission_indices<'fd>(sq_mmap: &Mmap, params: &IoUringParams) -> &'fd
         let IoUringParams { sq_off, .. } = params;
         let head = sq_mmap.offset(sq_off.array).cast::<u32>();
         let size = sq_mmap.offset(sq_off.ring_entries).cast::<u32>().read();
-        NonNull::slice_from_raw_parts(head, size as usize).as_mut()
+        from_raw_parts_mut(head.as_ptr(), size as usize)
     }
 }
 
