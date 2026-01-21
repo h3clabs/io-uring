@@ -19,6 +19,7 @@
         "taskrun",
         "uring",
         "uringio",
+        "getevents",
         "userspace"
     ]
 }

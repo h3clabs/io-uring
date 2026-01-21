@@ -1,14 +1,9 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ops::Deref};
 
 use crate::{
-    platform::iouring::{io_uring_setup, AsRawFd, IoUringParams, IoUringSetupFlags},
+    platform::iouring::{io_uring_setup, AsRawFd, IoUringParams, IoUringSetupFlags, OwnedFd},
     shared::error::Result,
-    uringio::{
-        completion::entry::Cqe,
-        mmap_arena::MmapArena,
-        submission::entry::Sqe,
-        uring::{desc::RingDesc, mode::Mode},
-    },
+    uringio::{completion::entry::Cqe, submission::entry::Sqe, uring::mode::Mode},
 };
 
 #[derive(Debug)]
@@ -86,13 +81,13 @@ where
         self
     }
 
-    // Must use with SQPOLL
+    // Must use with IOPOLL
     pub fn coop_taskrun(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::COOP_TASKRUN;
         self
     }
 
-    // Must use with SQPOLL
+    // Must use with IOPOLL
     pub fn taskrun_flag(mut self) -> Self {
         self.params.flags |= IoUringSetupFlags::TASKRUN_FLAG;
         self
@@ -132,36 +127,30 @@ where
         self
     }
 
-    pub fn setup(self) -> Result<(RingDesc<S, C, M>, IoUringParams)> {
-        let SetupArgs { mut params, .. } = self;
+    pub fn setup(self) -> Result<(OwnedFd, UringArgs<S, C, M>)> {
+        let Self { mut params, .. } = self;
         let fd = unsafe { io_uring_setup(params.sq_entries, &mut params)? };
-        let arena = MmapArena::new(&fd, &params)?;
-        Ok((RingDesc::new(fd, arena), params))
+        let args = UringArgs { params, _marker_: PhantomData };
+        Ok((fd, args))
     }
 }
 
-pub trait ParamsExt<S, C> {
-    fn sq_size(&self) -> usize;
-
-    fn sq_indices_size(&self) -> usize;
-
-    fn sqes_size(&self) -> usize;
-
-    fn cq_size(&self) -> usize;
-
-    fn cqes_size(&self) -> usize;
+#[derive(Debug)]
+pub struct UringArgs<S, C, M> {
+    params: IoUringParams,
+    _marker_: PhantomData<(S, C, M)>,
 }
 
-impl<S, C> ParamsExt<S, C> for IoUringParams
+impl<S, C, M> UringArgs<S, C, M>
 where
     S: Sqe,
     C: Cqe,
 {
-    fn sq_size(&self) -> usize {
-        self.sq_off.array as usize + <Self as ParamsExt<S, C>>::sq_indices_size(self)
+    pub fn sq_size(&self) -> usize {
+        self.sq_off.array as usize + self.sq_indices_size()
     }
 
-    fn sq_indices_size(&self) -> usize {
+    pub fn sq_indices_size(&self) -> usize {
         if self.flags.contains(IoUringSetupFlags::NO_SQARRAY) {
             0
         } else {
@@ -169,15 +158,23 @@ where
         }
     }
 
-    fn sqes_size(&self) -> usize {
+    pub fn sqes_size(&self) -> usize {
         self.sq_entries as usize * S::SETUP_SQE_SIZE
     }
 
-    fn cq_size(&self) -> usize {
-        self.cq_off.cqes as usize + <Self as ParamsExt<S, C>>::cqes_size(self)
+    pub fn cq_size(&self) -> usize {
+        self.cq_off.cqes as usize + self.cqes_size()
     }
 
-    fn cqes_size(&self) -> usize {
+    pub fn cqes_size(&self) -> usize {
         self.cq_entries as usize * C::SETUP_CQE_SIZE
+    }
+}
+
+impl<S, C, M> Deref for UringArgs<S, C, M> {
+    type Target = IoUringParams;
+
+    fn deref(&self) -> &Self::Target {
+        &self.params
     }
 }

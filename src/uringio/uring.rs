@@ -1,8 +1,9 @@
-pub mod desc;
+pub mod args;
+pub mod enter;
 pub mod mode;
 
 use crate::{
-    platform::iouring::IoUringParams,
+    platform::iouring::OwnedFd,
     shared::error::Result,
     uringio::{
         completion::{
@@ -16,15 +17,17 @@ use crate::{
             queue::SubmissionQueue,
             submitter::Submitter,
         },
-        uring::mode::Mode,
+        uring::{args::UringArgs, enter::UringHandler, mode::Mode},
     },
 };
 
 /// Uring
 #[derive(Debug)]
 pub struct Uring<'fd, S, C, M> {
+    pub hd: UringHandler<'fd, S, C, M>,
     pub sq: SubmissionQueue<'fd, S, M>,
     pub cq: CompletionQueue<'fd, C, M>,
+    arena: MmapArena<'fd, S, C, M>,
 }
 
 impl<'fd, S, C, M> Uring<'fd, S, C, M>
@@ -33,12 +36,24 @@ where
     C: Cqe,
     M: Mode,
 {
-    pub fn new(arena: &'fd MmapArena<S, C, M>, params: &IoUringParams) -> Result<Self> {
+    pub fn new(fd: &'fd OwnedFd, args: &UringArgs<S, C, M>) -> Result<Self> {
         unsafe {
-            let sq = SubmissionQueue::new(&arena.sq_mmap, &arena.sqes_mmap, params);
-            let cq = CompletionQueue::new(arena.cq_mmap(), params);
-            Ok(Uring { sq, cq })
+            let arena = MmapArena::new(fd, args)?;
+
+            let hd = UringHandler::new(fd, args);
+            let sq = SubmissionQueue::new(&arena.sq_mmap, &arena.sqes_mmap, args);
+            let cq = CompletionQueue::new(arena.cq_mmap(), args);
+            Ok(Uring { hd, sq, cq, arena })
         }
+    }
+
+    pub fn register(mut self) -> Result<Self> {
+        self.hd.register_ring_fd()?;
+        Ok(self)
+    }
+
+    pub fn arena(&self) -> &MmapArena<'fd, S, C, M> {
+        &self.arena
     }
 
     pub fn submitter(&mut self) -> Submitter<'_, 'fd, S, M> {
@@ -49,8 +64,10 @@ where
         self.cq.collector()
     }
 
-    pub fn borrow(&mut self) -> (Submitter<'_, 'fd, S, M>, Collector<'_, 'fd, C, M>) {
-        (self.sq.submitter(), self.cq.collector())
+    pub fn borrow(
+        &mut self,
+    ) -> (&mut UringHandler<'fd, S, C, M>, Submitter<'_, 'fd, S, M>, Collector<'_, 'fd, C, M>) {
+        (&mut self.hd, self.sq.submitter(), self.cq.collector())
     }
 }
 

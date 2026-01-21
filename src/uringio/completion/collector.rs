@@ -1,30 +1,17 @@
-use crate::uringio::{
-    completion::{entry::Cqe, queue::CompletionQueue},
-    uring::mode::Mode,
-};
+use crate::uringio::{completion::queue::CompletionQueue, uring::mode::Mode};
 
 #[derive(Debug)]
-pub struct Collector<'c, 'fd, C, M> {
+pub struct Collector<'c, 'fd, C, M>
+where
+    M: Mode,
+{
     pub(crate) head: u32,
     pub(crate) tail: u32,
     pub queue: &'c mut CompletionQueue<'fd, C, M>,
 }
 
-impl<'c, 'fd, C, M> Collector<'c, 'fd, C, M> {
-    #[inline]
-    pub const fn size(&self) -> u32 {
-        self.tail.wrapping_sub(self.head)
-    }
-
-    #[inline]
-    pub const fn is_full(&self) -> bool {
-        self.size() == self.queue.size
-    }
-}
-
 impl<'c, 'fd, C, M> Collector<'c, 'fd, C, M>
 where
-    C: Cqe,
     M: Mode,
 {
     #[inline]
@@ -41,9 +28,31 @@ where
         self.update_head();
         self.update_tail();
     }
+
+    #[inline]
+    pub const fn is_full(&self) -> bool {
+        self.size() == self.queue.size
+    }
+
+    #[inline]
+    pub const fn size(&self) -> u32 {
+        self.tail.wrapping_sub(self.head)
+    }
 }
 
-impl<'c, 'fd, C, M> Iterator for Collector<'c, 'fd, C, M> {
+impl<'c, 'fd, C, M> Drop for Collector<'c, 'fd, C, M>
+where
+    M: Mode,
+{
+    fn drop(&mut self) {
+        self.update_head();
+    }
+}
+
+impl<'c, 'fd, C, M> Iterator for Collector<'c, 'fd, C, M>
+where
+    M: Mode,
+{
     type Item = &'c C;
 
     #[inline]
@@ -64,7 +73,10 @@ impl<'c, 'fd, C, M> Iterator for Collector<'c, 'fd, C, M> {
     }
 }
 
-impl<'c, 'fd, C, M> ExactSizeIterator for Collector<'c, 'fd, C, M> {
+impl<'c, 'fd, C, M> ExactSizeIterator for Collector<'c, 'fd, C, M>
+where
+    M: Mode,
+{
     #[inline]
     fn len(&self) -> usize {
         self.size() as usize

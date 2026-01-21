@@ -18,11 +18,12 @@ exclude = []
 members = [ "io-uring-test", "io-uring-bench" ]
 
 [features]
-default = ["bindgen", "overwrite", "unstable-toolchain"]
+default = ["bindgen", "overwrite", "unstable-toolchain", "features-checker"]
 overwrite = [ "bindgen" ]
 direct-syscall = [ "sc" ]
 io_safety = []
 unstable-toolchain = []
+features-checker = []
 
 [dependencies]
 bitflags = "2"
@@ -39,3 +40,9 @@ bindgen = { version = "0.69", optional = true }
 anyhow = "1"
 socket2 = "0.5"
 slab = "0.4"
+
+[profile.release]
+codegen-units = 1
+lto           = true
+opt-level     = 3
+strip         = true

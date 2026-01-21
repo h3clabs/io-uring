@@ -6,7 +6,7 @@ use crate::{
     uringio::{
         operator::{nop::Nop128, Op},
         submission::{
-            entry::{FixSqe, Sqe, Sqe128, Sqe64, SqeMix},
+            entry::{FixSqe, Sqe128, Sqe64, SqeMix},
             queue::SubmissionQueue,
         },
         uring::mode::Mode,
@@ -15,7 +15,10 @@ use crate::{
 
 /// Submitter
 #[derive(Debug)]
-pub struct Submitter<'s, 'fd, S, M> {
+pub struct Submitter<'s, 'fd, S, M>
+where
+    M: Mode,
+{
     pub(crate) head: u32,
     pub(crate) tail: u32,
     pub queue: &'s mut SubmissionQueue<'fd, S, M>,
@@ -23,7 +26,6 @@ pub struct Submitter<'s, 'fd, S, M> {
 
 impl<'s, 'fd, S, M> Submitter<'s, 'fd, S, M>
 where
-    S: Sqe,
     M: Mode,
 {
     fn push_impl<T>(&mut self, sqe: T) -> Result<Null, T>
@@ -64,8 +66,15 @@ where
     pub const fn is_full(&self) -> bool {
         self.size() == self.queue.size
     }
+}
 
-    pub fn submit(n: usize) {}
+impl<'s, 'fd, S, M> Drop for Submitter<'s, 'fd, S, M>
+where
+    M: Mode,
+{
+    fn drop(&mut self) {
+        self.update_tail();
+    }
 }
 
 pub trait Submit<T> {
@@ -132,7 +141,6 @@ where
 // Submit Op
 impl<'s, 'fd, T, S, M> Submit<T> for Submitter<'s, 'fd, S, M>
 where
-    S: Sqe,
     M: Mode,
     T: Op + Into<S>,
 {

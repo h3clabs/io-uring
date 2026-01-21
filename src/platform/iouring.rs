@@ -1,11 +1,14 @@
 pub use rustix::{
     fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd, RawFd},
+    ffi::c_void,
+    io::Result,
     io_uring::{
         io_uring_cqe as IoUringCqe, io_uring_enter, io_uring_params as IoUringParams,
-        io_uring_ptr as IoUringPtr, io_uring_setup, io_uring_sqe as IoUringSqe,
-        io_uring_user_data as IoUringUserData, IoringCqFlags as IoUringCqFlags,
-        IoringCqeFlags as IoUringCqeFlags, IoringEnterFlags as IoUringEnterFlags,
-        IoringFeatureFlags as IoUringFeatureFlags, IoringOp as IoUringOp,
+        io_uring_ptr as IoUringPtr, io_uring_register, io_uring_rsrc_update as IoUringRsrcUpdate,
+        io_uring_setup, io_uring_sqe as IoUringSqe, io_uring_user_data as IoUringUserData,
+        IoringCqFlags as IoUringCqFlags, IoringCqeFlags as IoUringCqeFlags,
+        IoringEnterFlags as IoUringEnterFlags, IoringFeatureFlags as IoUringFeatureFlags,
+        IoringOp as IoUringOp, IoringRegisterOp as IoUringRegisterOp,
         IoringSetupFlags as IoUringSetupFlags, IoringSqFlags as IoUringSqFlags,
         IoringSqeFlags as IoUringSqeFlags, IORING_OFF_CQ_RING as IOURING_OFF_CQ_RING,
         IORING_OFF_SQES as IOURING_OFF_SQES, IORING_OFF_SQ_RING as IOURING_OFF_SQ_RING,

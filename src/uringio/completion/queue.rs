@@ -10,10 +10,7 @@ use crate::{
         iouring::{IoUringCqFlags, IoUringParams},
         mmap::Mmap,
     },
-    uringio::{
-        completion::{collector::Collector, entry::Cqe},
-        uring::mode::Mode,
-    },
+    uringio::{completion::collector::Collector, uring::mode::Mode},
 };
 
 /// CompletionQueue
@@ -63,18 +60,16 @@ impl<'fd, C, M> CompletionQueue<'fd, C, M> {
 
 impl<'fd, C, M> CompletionQueue<'fd, C, M>
 where
-    C: Cqe,
     M: Mode,
 {
     #[inline]
     pub const fn head(&self) -> u32 {
-        // SAFETY: userspace set CompletionQueue khead
+        // SAFETY: userspace set CompletionQueue k_head
         unsafe { *self.k_head.as_ptr() }
     }
 
     #[inline]
     pub fn tail(&self) -> u32 {
-        // TODO: Relaxed or Read ptr?
         self.k_tail.load(Ordering::Acquire)
     }
 

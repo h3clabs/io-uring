@@ -1,31 +1,54 @@
 use std::{fs, io, os::unix::io::AsRawFd};
 
-use io_uring::uringio::{
-    operator::fs::read::Read,
-    submission::submitter::Submit,
-    uring::{
-        mode::{Iopoll, Sqpoll},
-        UringFd, UringIo, UringMix,
+use io_uring::{
+    platform::iouring::IoUringUserData,
+    uringio::{
+        operator::{fs::Read, nop::Nop},
+        ring::{
+            fd::RingFd,
+            mode::{Iopoll, Sqpoll},
+            UringIo, UringMix,
+        },
+        submission::{entry::Sqe64, submitter::Submit},
     },
 };
 
 fn main() -> io::Result<()> {
-    let fd = Iopoll::new_args(128).setup()?;
+    let fd = Sqpoll::new_args(128).setup()?;
 
-    let mut uring = UringIo::new(&fd)?;
+    let mut uring = UringIo::new(&rd.arena, &params)?;
 
-    println!("fd: {:#?}", fd);
+    println!("fd: {:#?}", rd);
     println!("uring: {:#?}", uring);
 
     let file = fs::File::open("README.md")?;
     let mut dst = vec![0; 1024];
-    let read = Read::new(file, &mut dst);
+    let mut read = Read::new(file, &mut dst);
+    read.user_data = IoUringUserData::from(0x42);
     println!("Read: {:#?}", read);
 
-    uring.sq.submit(read)?;
+    let (mut submitter, mut collector) = uring.borrow();
+    let res = submitter.push(read);
+    println!("res: {:#?}", res);
+    submitter.update();
 
     loop {
-        std::hint::spin_loop()
+        println!("submitter {:?}", submitter);
+        println!("collector {:?}", collector);
+
+        while let Some(cqe) = collector.next() {
+            println!("== cqe ==: {:#?}", cqe);
+        }
+
+        while let Err(sqe) = submitter.push(Nop::new()) {
+            println!("submit error: {:#?}", sqe);
+            continue;
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        collector.update();
+
+        // break;
     }
 
     // let mut buf = vec![0; 1024];

@@ -13,7 +13,7 @@ use crate::{
 
 #[derive(Debug)]
 #[repr(C)]
-pub struct Read<'a> {
+pub struct Read<'fd, 'dst> {
     pub opcode: IoUringOp,
     pub flags: IoUringSqeFlags,
     pub ioprio: u16,
@@ -28,17 +28,17 @@ pub struct Read<'a> {
     _unused1_: [u8; 4],
     pub pi_attr: IoUringPiAttr,
 
-    _marker_: PhantomData<&'a mut [u8]>,
+    _marker_: PhantomData<(&'fd (), &'dst mut [u8])>,
 }
 
-impl<'a> Op for Read<'a> {
+impl<'fd, 'dst> Op for Read<'fd, 'dst> {
     type Entry = Sqe64;
 
     const OP_CODE: IoUringOp = IoUringOp::Read;
 }
 
-impl<'a> Read<'a> {
-    pub fn new<Fd>(fd: Fd, dst: &'a mut [u8]) -> Self
+impl<'fd, 'dst> Read<'fd, 'dst> {
+    pub fn new<Fd>(fd: &'fd Fd, dst: &'dst mut [u8]) -> Self
     where
         Fd: OpFd,
     {

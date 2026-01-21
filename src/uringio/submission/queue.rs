@@ -11,7 +11,7 @@ use crate::{
         mmap::Mmap,
     },
     uringio::{
-        submission::{entry::Sqe, index::SubmissionIndex, submitter::Submitter},
+        submission::{index::SubmissionIndex, submitter::Submitter},
         uring::mode::Mode,
     },
 };
@@ -55,8 +55,16 @@ impl<'fd, S, M> SubmissionQueue<'fd, S, M> {
         self.k_dropped.load(Ordering::Acquire)
     }
 
+    pub fn need_wakeup(&self) -> bool {
+        self.flags(Ordering::Relaxed).contains(IoUringSqFlags::NEED_WAKEUP)
+    }
+
     pub fn cq_overflow(&self) -> bool {
         self.flags(Ordering::Relaxed).contains(IoUringSqFlags::CQ_OVERFLOW)
+    }
+
+    pub fn taskrun(&self) -> bool {
+        self.flags(Ordering::Relaxed).contains(IoUringSqFlags::TASKRUN)
     }
 
     #[inline]
@@ -68,7 +76,6 @@ impl<'fd, S, M> SubmissionQueue<'fd, S, M> {
 
 impl<'fd, S, M> SubmissionQueue<'fd, S, M>
 where
-    S: Sqe,
     M: Mode,
 {
     #[inline]
@@ -78,7 +85,7 @@ where
 
     #[inline]
     pub const fn tail(&self) -> u32 {
-        // SAFETY: userspace set SubmissionQueue ktail
+        // SAFETY: userspace set SubmissionQueue k_tail
         unsafe { *self.k_tail.as_ptr() }
     }
 

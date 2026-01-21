@@ -1,12 +1,12 @@
 use std::sync::atomic::Ordering;
 
 use crate::{
-    platform::iouring::IoUringSetupFlags,
+    platform::iouring::{IoUringEnterFlags, IoUringSetupFlags},
     shared::constant::DEFAULT_SQ_POLL_IDLE,
     uringio::{
         completion::entry::Cqe,
-        setup_args::SetupArgs,
         submission::{entry::Sqe, queue::SubmissionQueue},
+        uring::args::SetupArgs,
     },
 };
 
@@ -23,6 +23,11 @@ pub trait Mode: Sized {
     const SETUP_FLAG: IoUringSetupFlags = match Self::TYPE {
         Ty::Iopoll => IoUringSetupFlags::IOPOLL,
         Ty::Sqpoll => IoUringSetupFlags::SQPOLL,
+    };
+
+    const ENTER_FLAG: IoUringEnterFlags = match Self::TYPE {
+        Ty::Iopoll => IoUringEnterFlags::GETEVENTS,
+        Ty::Sqpoll => IoUringEnterFlags::empty(),
     };
 
     fn get_sq_head<S>(sq: &SubmissionQueue<'_, S, Self>) -> u32;

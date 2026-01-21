@@ -1,6 +1,4 @@
-use std::os::fd::AsRawFd;
-
-use crate::platform::iouring::{AsFd, IoUringSqeFlags, NopFlags, RawFd};
+use crate::platform::iouring::{AsFd, AsRawFd, IoUringSqeFlags, NopFlags, RawFd};
 
 pub trait OpFd {
     const SQE_FLAG: IoUringSqeFlags;
