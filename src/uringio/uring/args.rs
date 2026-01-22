@@ -130,6 +130,13 @@ where
     pub fn setup(self) -> Result<(OwnedFd, UringArgs<S, C, M>)> {
         let Self { mut params, .. } = self;
         let fd = unsafe { io_uring_setup(params.sq_entries, &mut params)? };
+
+        #[cfg(feature = "features-checker")]
+        {
+            use crate::uringio::uring::feat::check_setup_features;
+            check_setup_features(params.features)?;
+        }
+
         let args = UringArgs { params, _marker_: PhantomData };
         Ok((fd, args))
     }

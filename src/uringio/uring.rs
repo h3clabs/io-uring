@@ -1,5 +1,6 @@
 pub mod args;
 pub mod enter;
+pub mod feat;
 pub mod mode;
 
 use crate::{

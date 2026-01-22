@@ -78,6 +78,21 @@ impl<'fd, S, C, M> UringEnter<'fd, S, C, M> {
         Ok(NULL)
     }
 
+    pub fn set_iowait(&mut self, enable: bool) {
+        #[cfg(feature = "features-checker")]
+        {
+            if !self.features.contains(IoUringFeatureFlags::NO_IOWAIT) {
+                return;
+            }
+        }
+
+        if enable {
+            self.enter_flags.insert(IoUringEnterFlags::NO_IOWAIT);
+        } else {
+            self.enter_flags.remove(IoUringEnterFlags::NO_IOWAIT);
+        }
+    }
+
     #[inline]
     pub fn enter(
         &self,
