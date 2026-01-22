@@ -1,12 +1,15 @@
 use std::{
-    io::{Error, ErrorKind, Result},
+    io::Result,
     ops::{Deref, DerefMut},
     slice::from_raw_parts_mut,
 };
 
-use crate::platform::{
-    iouring::{IoUringParams, IoUringSetupFlags},
-    mmap::Mmap,
+use crate::{
+    platform::{
+        iouring::{IoUringParams, IoUringSetupFlags},
+        mmap::Mmap,
+    },
+    shared::error::err,
 };
 
 /// SubmissionIndex
@@ -28,10 +31,7 @@ const fn submission_indices<'fd>(sq_mmap: &Mmap, params: &IoUringParams) -> &'fd
 impl<'fd> SubmissionIndex<'fd> {
     pub fn new(sq_mmap: &Mmap, params: &IoUringParams) -> Result<Self> {
         if params.flags.contains(IoUringSetupFlags::NO_SQARRAY) {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "IoUring setup with IORING_SETUP_NO_SQARRAY flag",
-            ));
+            return err!("IoUring setup with IORING_SETUP_NO_SQARRAY flag");
         }
 
         Ok(Self { indices: submission_indices(sq_mmap, params) })
