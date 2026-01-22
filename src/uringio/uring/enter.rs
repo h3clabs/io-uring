@@ -1,28 +1,18 @@
-use std::{
-    io::{Error, ErrorKind, Result},
-    marker::PhantomData,
-};
+use std::{io::Result, marker::PhantomData};
 
 use crate::{
     platform::iouring::{
-        io_uring_enter, io_uring_register, AsFd, AsRawFd, BorrowedFd, IoUringEnterFlags,
-        IoUringFeatureFlags,
-        IoUringRegisterOp::{RegisterRingFds, UnregisterRingFds},
-        IoUringRsrcUpdate, OwnedFd,
+        io_uring_enter, AsFd, BorrowedFd, IoUringEnterFlags, IoUringFeatureFlags, OwnedFd,
     },
-    shared::null::{Null, NULL},
-    uringio::{
-        register::args::{RegisterArgs, RegisterRingFd},
-        uring::{args::UringArgs, mode::Mode},
-    },
+    uringio::uring::{args::UringArgs, mode::Mode},
 };
 
 #[derive(Debug)]
 pub struct UringEnter<'fd, S, C, M> {
-    enter_fd: BorrowedFd<'fd>,
+    pub(crate) enter_fd: BorrowedFd<'fd>,
     // TODO: init flags
-    enter_flags: IoUringEnterFlags,
-    features: IoUringFeatureFlags,
+    pub(crate) enter_flags: IoUringEnterFlags,
+    pub(crate) features: IoUringFeatureFlags,
 
     _marker_: PhantomData<(S, C, M)>,
 }
@@ -45,37 +35,6 @@ impl<'fd, S, C, M> UringEnter<'fd, S, C, M> {
     #[inline]
     pub fn features(&self) -> &IoUringFeatureFlags {
         &self.features
-    }
-
-    #[inline]
-    pub fn is_ring_registered(&self) -> bool {
-        self.enter_flags.contains(IoUringEnterFlags::REGISTERED_RING)
-    }
-
-    pub fn register_ring_fd(&mut self) -> Result<Null> {
-        #[cfg(feature = "features-checker")]
-        {
-            if !self.features.contains(IoUringFeatureFlags::REG_REG_RING) {
-                return Err(Error::new(ErrorKind::Other, "Feature REG_REG_RING Invalid"));
-            }
-        }
-
-        if self.is_ring_registered() {
-            return Err(Error::new(ErrorKind::Other, "Ring fd registered"));
-        }
-
-        #[allow(unused_mut)]
-        let mut args = IoUringRsrcUpdate::new(self.enter_fd.as_raw_fd());
-        // SAFETY: asm options !readonly
-        let num = unsafe { io_uring_register(&self.enter_fd, RegisterRingFds, args.as_ptr(), 1)? };
-
-        if num != 1 {
-            return Err(Error::new(ErrorKind::Other, "Failed to register ring fd"));
-        }
-
-        self.enter_fd = unsafe { BorrowedFd::borrow_raw(args.offset as _) };
-        self.enter_flags |= IoUringEnterFlags::REGISTERED_RING;
-        Ok(NULL)
     }
 
     pub fn set_iowait(&mut self, enable: bool) {
@@ -104,20 +63,13 @@ impl<'fd, S, C, M> UringEnter<'fd, S, C, M> {
             io_uring_enter(self.enter_fd, to_submit, min_complete, self.enter_flags | flags)?
         })
     }
-
-    pub fn get_events(&self) -> Result<u32> {
-        self.enter(0, 0, IoUringEnterFlags::GETEVENTS)
-    }
 }
 
 impl<'fd, S, C, M> Drop for UringEnter<'fd, S, C, M> {
     fn drop(&mut self) {
         if self.is_ring_registered() {
-            let idx = self.enter_fd.as_raw_fd() as u32;
-            let args = IoUringRsrcUpdate::unregister(idx);
             unsafe {
-                // Error ignored
-                let _ = io_uring_register(&self.enter_fd, UnregisterRingFds, args.as_ptr(), 0);
+                let _ = self.unregister_ring_fd();
             }
         }
     }
