@@ -1,16 +1,28 @@
-use crate::uringio::{completion::queue::CompletionQueue, uring::mode::Mode};
+use std::sync::{atomic, atomic::Ordering};
+
+use crate::{
+    platform::iouring::{IoUringEnterFlags, IoUringSqFlags},
+    shared::error::Result,
+    uringio::{
+        completion::queue::CompletionQueue,
+        uring::{
+            enter::UringEnter,
+            mode::{Mode, Sqpoll},
+        },
+    },
+};
 
 #[derive(Debug)]
-pub struct Collector<'c, 'fd, C, M>
+pub struct Collector<'c, 'fd, S, C, M>
 where
     M: Mode,
 {
     pub(crate) head: u32,
     pub(crate) tail: u32,
-    pub queue: &'c mut CompletionQueue<'fd, C, M>,
+    pub queue: &'c mut CompletionQueue<'fd, S, C, M>,
 }
 
-impl<'c, 'fd, C, M> Collector<'c, 'fd, C, M>
+impl<'c, 'fd, S, C, M> Collector<'c, 'fd, S, C, M>
 where
     M: Mode,
 {
@@ -40,7 +52,7 @@ where
     }
 }
 
-impl<'c, 'fd, C, M> Drop for Collector<'c, 'fd, C, M>
+impl<'c, 'fd, S, C, M> Drop for Collector<'c, 'fd, S, C, M>
 where
     M: Mode,
 {
@@ -49,7 +61,7 @@ where
     }
 }
 
-impl<'c, 'fd, C, M> Iterator for Collector<'c, 'fd, C, M>
+impl<'c, 'fd, S, C, M> Iterator for Collector<'c, 'fd, S, C, M>
 where
     M: Mode,
 {
@@ -73,12 +85,44 @@ where
     }
 }
 
-impl<'c, 'fd, C, M> ExactSizeIterator for Collector<'c, 'fd, C, M>
+impl<'c, 'fd, S, C, M> ExactSizeIterator for Collector<'c, 'fd, S, C, M>
 where
     M: Mode,
 {
     #[inline]
     fn len(&self) -> usize {
         self.size() as usize
+    }
+}
+
+impl<'c, 'fd, S, C> Collector<'c, 'fd, S, C, Sqpoll> {
+    pub fn flush(
+        &mut self,
+        enter: &mut UringEnter<'fd, S, C, Sqpoll>,
+        min_complete: u32,
+    ) -> Result<u32> {
+        // TODO: void fence(SeqCst): https://github.com/axboe/liburing/issues/541
+        atomic::fence(Ordering::SeqCst);
+        let sq_flags = self.queue.sq_flags(Ordering::Relaxed);
+        let sq_wakeup = sq_flags.contains(IoUringSqFlags::NEED_WAKEUP);
+        let cq_overflow = sq_flags.contains(IoUringSqFlags::CQ_OVERFLOW);
+        let enter_getevents = min_complete > 0 || cq_overflow;
+
+        let mut flags = IoUringEnterFlags::default();
+
+        if sq_wakeup {
+            flags.insert(IoUringEnterFlags::SQ_WAKEUP);
+        } else if !enter_getevents {
+            // IORING_FEAT_NODROP enabled since kernel 5.5
+            // https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=1d7bb1d50fb4dc141c7431cc21fdd24ffcc83c76
+            return Ok(0);
+        };
+
+        if enter_getevents {
+            // IORING_ENTER_GETEVENTS call io_cqring_do_overflow_flush()
+            flags.insert(IoUringEnterFlags::GETEVENTS);
+        }
+
+        enter.enter(0, min_complete, flags)
     }
 }

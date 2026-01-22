@@ -19,6 +19,7 @@ mod private {
     impl Sealed for Sqe128 {}
 }
 
+// TODO: use attr macro to impl Op
 pub trait Op: Sized {
     type Entry: private::Sealed;
 

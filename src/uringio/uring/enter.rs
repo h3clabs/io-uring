@@ -1,7 +1,6 @@
 use std::{
     io::{Error, ErrorKind, Result},
     marker::PhantomData,
-    sync::{atomic, atomic::Ordering},
 };
 
 use crate::{
@@ -9,21 +8,17 @@ use crate::{
         io_uring_enter, io_uring_register, AsFd, AsRawFd, BorrowedFd, IoUringEnterFlags,
         IoUringFeatureFlags,
         IoUringRegisterOp::{RegisterRingFds, UnregisterRingFds},
-        IoUringRsrcUpdate, IoUringSqFlags, OwnedFd,
+        IoUringRsrcUpdate, OwnedFd,
     },
     shared::null::{Null, NULL},
     uringio::{
         register::args::{RegisterArgs, RegisterRingFd},
-        submission::submitter::Submitter,
-        uring::{
-            args::UringArgs,
-            mode::{Iopoll, Mode, Sqpoll},
-        },
+        uring::{args::UringArgs, mode::Mode},
     },
 };
 
 #[derive(Debug)]
-pub struct UringHandler<'fd, S, C, M> {
+pub struct UringEnter<'fd, S, C, M> {
     enter_fd: BorrowedFd<'fd>,
     // TODO: init flags
     enter_flags: IoUringEnterFlags,
@@ -32,7 +27,7 @@ pub struct UringHandler<'fd, S, C, M> {
     _marker_: PhantomData<(S, C, M)>,
 }
 
-impl<'fd, S, C, M> UringHandler<'fd, S, C, M>
+impl<'fd, S, C, M> UringEnter<'fd, S, C, M>
 where
     M: Mode,
 {
@@ -46,7 +41,7 @@ where
     }
 }
 
-impl<'fd, S, C, M> UringHandler<'fd, S, C, M> {
+impl<'fd, S, C, M> UringEnter<'fd, S, C, M> {
     #[inline]
     pub fn features(&self) -> &IoUringFeatureFlags {
         &self.features
@@ -100,46 +95,7 @@ impl<'fd, S, C, M> UringHandler<'fd, S, C, M> {
     }
 }
 
-impl<'fd, S, C> UringHandler<'fd, S, C, Iopoll> {
-    pub fn submit(
-        &mut self,
-        submitter: &mut Submitter<'_, 'fd, S, Iopoll>,
-        min_complete: u32,
-    ) -> Result<u32> {
-        self.enter(submitter.size(), min_complete, IoUringEnterFlags::GETEVENTS)
-    }
-}
-
-impl<'fd, S, C> UringHandler<'fd, S, C, Sqpoll> {
-    pub fn sq_wait(&self) -> Result<u32> {
-        self.enter(0, 0, IoUringEnterFlags::SQ_WAIT)
-    }
-
-    pub fn submit(
-        &mut self,
-        submitter: &mut Submitter<'_, 'fd, S, Sqpoll>,
-        min_complete: u32,
-    ) -> Result<u32> {
-        let mut flags = IoUringEnterFlags::default();
-
-        // TODO: void fence(SeqCst): https://github.com/axboe/liburing/issues/541
-        atomic::fence(Ordering::SeqCst);
-        let sq_flags = submitter.queue.flags(Ordering::Relaxed);
-
-        if sq_flags.contains(IoUringSqFlags::NEED_WAKEUP) {
-            flags.insert(IoUringEnterFlags::SQ_WAKEUP);
-        }
-
-        if min_complete > 0 || sq_flags.contains(IoUringSqFlags::CQ_OVERFLOW) {
-            // IORING_ENTER_GETEVENTS call io_cqring_do_overflow_flush()
-            flags.insert(IoUringEnterFlags::GETEVENTS);
-        }
-
-        self.enter(submitter.size(), min_complete, flags)
-    }
-}
-
-impl<'fd, S, C, M> Drop for UringHandler<'fd, S, C, M> {
+impl<'fd, S, C, M> Drop for UringEnter<'fd, S, C, M> {
     fn drop(&mut self) {
         if self.is_ring_registered() {
             let idx = self.enter_fd.as_raw_fd() as u32;

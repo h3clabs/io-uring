@@ -30,9 +30,9 @@ pub trait Mode: Sized {
         Ty::Sqpoll => IoUringEnterFlags::empty(),
     };
 
-    fn get_sq_head<S>(sq: &SubmissionQueue<'_, S, Self>) -> u32;
+    fn get_sq_head<S, C>(sq: &SubmissionQueue<'_, S, C, Self>) -> u32;
 
-    fn set_sq_tail<S>(sq: &mut SubmissionQueue<'_, S, Self>, tail: u32);
+    fn set_sq_tail<S, C>(sq: &mut SubmissionQueue<'_, S, C, Self>, tail: u32);
 }
 
 /// Iopoll
@@ -43,13 +43,13 @@ impl Mode for Iopoll {
     const TYPE: Ty = Ty::Iopoll;
 
     #[inline]
-    fn get_sq_head<S>(sq: &SubmissionQueue<'_, S, Self>) -> u32 {
+    fn get_sq_head<S, C>(sq: &SubmissionQueue<'_, S, C, Self>) -> u32 {
         // SAFETY: userspace drive update in IOPOLL mode
         unsafe { *sq.k_head.as_ptr() }
     }
 
     #[inline]
-    fn set_sq_tail<S>(sq: &mut SubmissionQueue<'_, S, Self>, tail: u32) {
+    fn set_sq_tail<S, C>(sq: &mut SubmissionQueue<'_, S, C, Self>, tail: u32) {
         // SAFETY: userspace drive update in IOPOLL mode
         unsafe { *sq.k_tail.as_ptr() = tail }
     }
@@ -82,12 +82,12 @@ impl Mode for Sqpoll {
     const TYPE: Ty = Ty::Sqpoll;
 
     #[inline]
-    fn get_sq_head<S>(sq: &SubmissionQueue<'_, S, Self>) -> u32 {
+    fn get_sq_head<S, C>(sq: &SubmissionQueue<'_, S, C, Self>) -> u32 {
         sq.k_head.load(Ordering::Acquire)
     }
 
     #[inline]
-    fn set_sq_tail<S>(sq: &mut SubmissionQueue<'_, S, Self>, tail: u32) {
+    fn set_sq_tail<S, C>(sq: &mut SubmissionQueue<'_, S, C, Self>, tail: u32) {
         sq.k_tail.store(tail, Ordering::Release)
     }
 }

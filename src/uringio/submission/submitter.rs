@@ -1,30 +1,35 @@
 use crate::{
+    platform::iouring::IoUringEnterFlags,
     shared::{
         error::Result,
         null::{Null, NULL},
     },
     uringio::{
+        completion::entry::{Cqe16, Cqe32, CqeMix},
         operator::{nop::Nop128, Op},
         submission::{
             entry::{FixSqe, Sqe128, Sqe64, SqeMix},
             queue::SubmissionQueue,
         },
-        uring::mode::Mode,
+        uring::{
+            enter::UringEnter,
+            mode::{Iopoll, Mode, Sqpoll},
+        },
     },
 };
 
 /// Submitter
 #[derive(Debug)]
-pub struct Submitter<'s, 'fd, S, M>
+pub struct Submitter<'s, 'fd, S, C, M>
 where
     M: Mode,
 {
     pub(crate) head: u32,
     pub(crate) tail: u32,
-    pub queue: &'s mut SubmissionQueue<'fd, S, M>,
+    pub queue: &'s mut SubmissionQueue<'fd, S, C, M>,
 }
 
-impl<'s, 'fd, S, M> Submitter<'s, 'fd, S, M>
+impl<'s, 'fd, S, C, M> Submitter<'s, 'fd, S, C, M>
 where
     M: Mode,
 {
@@ -68,7 +73,7 @@ where
     }
 }
 
-impl<'s, 'fd, S, M> Drop for Submitter<'s, 'fd, S, M>
+impl<'s, 'fd, S, C, M> Drop for Submitter<'s, 'fd, S, C, M>
 where
     M: Mode,
 {
@@ -82,7 +87,7 @@ pub trait Submit<T> {
 }
 
 // Submit to Sqe64 Queue
-impl<'s, 'fd, M> Submit<Sqe64> for Submitter<'s, 'fd, Sqe64, M>
+impl<'s, 'fd, M> Submit<Sqe64> for Submitter<'s, 'fd, Sqe64, Cqe16, M>
 where
     M: Mode,
 {
@@ -92,7 +97,7 @@ where
 }
 
 // Submit to Sqe128 Queue
-impl<'s, 'fd, M> Submit<Sqe128> for Submitter<'s, 'fd, Sqe128, M>
+impl<'s, 'fd, M> Submit<Sqe128> for Submitter<'s, 'fd, Sqe128, Cqe32, M>
 where
     M: Mode,
 {
@@ -102,7 +107,7 @@ where
 }
 
 // Submit Sqe64 to SqeMix Queue
-impl<'s, 'fd, M> Submit<Sqe64> for Submitter<'s, 'fd, SqeMix, M>
+impl<'s, 'fd, M> Submit<Sqe64> for Submitter<'s, 'fd, SqeMix, CqeMix, M>
 where
     M: Mode,
 {
@@ -112,7 +117,7 @@ where
 }
 
 // Submit Sqe128 to SqeMix Queue
-impl<'s, 'fd, M> Submit<Sqe128> for Submitter<'s, 'fd, SqeMix, M>
+impl<'s, 'fd, M> Submit<Sqe128> for Submitter<'s, 'fd, SqeMix, CqeMix, M>
 where
     M: Mode,
 {
@@ -139,12 +144,30 @@ where
 }
 
 // Submit Op
-impl<'s, 'fd, T, S, M> Submit<T> for Submitter<'s, 'fd, S, M>
+impl<'s, 'fd, T, S, C, M> Submit<T> for Submitter<'s, 'fd, S, C, M>
 where
     M: Mode,
     T: Op + Into<S>,
 {
     fn push(&mut self, op: T) -> Result<Null, T> {
         self.push_impl(op)
+    }
+}
+
+impl<'s, 'fd, S, C> Submitter<'s, 'fd, S, C, Iopoll> {
+    pub fn submit(
+        &mut self,
+        enter: &mut UringEnter<'fd, S, C, Iopoll>,
+        min_complete: u32,
+    ) -> Result<u32> {
+        self.update();
+
+        enter.enter(self.size(), min_complete, IoUringEnterFlags::GETEVENTS)
+    }
+}
+
+impl<'s, 'fd, S, C> Submitter<'s, 'fd, S, C, Sqpoll> {
+    pub fn submit(&mut self) {
+        self.update()
     }
 }

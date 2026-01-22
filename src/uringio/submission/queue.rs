@@ -18,7 +18,7 @@ use crate::{
 
 /// SubmissionQueue
 #[derive(Debug)]
-pub struct SubmissionQueue<'fd, S, M> {
+pub struct SubmissionQueue<'fd, S, C, M> {
     pub sqes: NonNull<S>,
     pub k_head: &'fd AtomicU32,
     pub k_tail: &'fd AtomicU32,
@@ -27,14 +27,14 @@ pub struct SubmissionQueue<'fd, S, M> {
     pub k_flags: &'fd AtomicU32,
     pub k_dropped: &'fd AtomicU32,
 
-    _marker_: PhantomData<M>,
+    _marker_: PhantomData<(C, M)>,
 }
 
-impl<'fd, S, M> SubmissionQueue<'fd, S, M> {
-    pub unsafe fn new(sq_mmap: &Mmap, sqe_mmap: &Mmap, params: &IoUringParams) -> Self {
+impl<'fd, S, C, M> SubmissionQueue<'fd, S, C, M> {
+    pub unsafe fn new(sq_mmap: &Mmap, sqes_mmap: &Mmap, params: &IoUringParams) -> Self {
         let IoUringParams { sq_off, .. } = params;
 
-        let sqes = sqe_mmap.ptr().cast();
+        let sqes = sqes_mmap.ptr().cast();
         let k_head = sq_mmap.offset(sq_off.head).cast().as_ref();
         let k_tail = sq_mmap.offset(sq_off.tail).cast().as_ref();
         let mask = sq_mmap.offset(sq_off.ring_mask).cast().read();
@@ -74,7 +74,7 @@ impl<'fd, S, M> SubmissionQueue<'fd, S, M> {
     }
 }
 
-impl<'fd, S, M> SubmissionQueue<'fd, S, M>
+impl<'fd, S, C, M> SubmissionQueue<'fd, S, C, M>
 where
     M: Mode,
 {
@@ -94,12 +94,12 @@ where
         M::set_sq_tail(self, tail);
     }
 
-    pub fn submitter(&mut self) -> Submitter<'_, 'fd, S, M> {
+    pub fn submitter(&mut self) -> Submitter<'_, 'fd, S, C, M> {
         Submitter { head: self.head(), tail: self.tail(), queue: self }
     }
 }
 
-impl<'fd, S, M> Index<u32> for SubmissionQueue<'fd, S, M> {
+impl<'fd, S, C, M> Index<u32> for SubmissionQueue<'fd, S, C, M> {
     type Output = S;
 
     #[inline]
@@ -109,7 +109,7 @@ impl<'fd, S, M> Index<u32> for SubmissionQueue<'fd, S, M> {
     }
 }
 
-impl<'fd, S, M> IndexMut<u32> for SubmissionQueue<'fd, S, M> {
+impl<'fd, S, C, M> IndexMut<u32> for SubmissionQueue<'fd, S, C, M> {
     #[inline]
     fn index_mut(&mut self, index: u32) -> &mut Self::Output {
         unsafe { self.get_sqe(index).as_mut() }
