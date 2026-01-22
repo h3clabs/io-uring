@@ -1,5 +1,6 @@
 #![cfg_attr(feature = "unstable-toolchain", feature(core_intrinsics))]
 #![cfg_attr(feature = "unstable-toolchain", allow(internal_features))]
+#![feature(likely_unlikely)]
 
 //! The `io_uring` library for Rust.
 //!
